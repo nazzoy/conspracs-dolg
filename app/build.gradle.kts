@@ -58,4 +58,6 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     implementation(libs.androidx.navigation.compose)
     implementation(libs.androidx.constraintlayout.compose)
+    implementation(libs.retrofit)
+    implementation(libs.retrofit.gson)
 }
