@@ -8,9 +8,9 @@ data class Repository(
     val description: String,
     val language: String,
     val lastUpdate: String,
-    val forks: Int,        // Новое поле
-    val openIssues: Int,   // Новое поле
-    val size: String       // Новое поле
+    val forks: Int,
+    val openIssues: Int,
+    val size: String
 )
 
 val mockRepositories = listOf(
