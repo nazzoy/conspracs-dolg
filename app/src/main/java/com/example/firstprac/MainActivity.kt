@@ -3,65 +3,101 @@ package com.example.firstprac
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.viewModels
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.constraintlayout.compose.ConstraintLayout
+import androidx.lifecycle.ViewModelProvider
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavType
-import androidx.navigation.compose.NavHost
-import androidx.navigation.compose.composable
-import androidx.navigation.compose.currentBackStackEntryAsState
-import androidx.navigation.compose.rememberNavController
+import androidx.navigation.compose.*
 import androidx.navigation.navArgument
-import androidx.constraintlayout.compose.ConstraintLayout
-import androidx.compose.ui.draw.clip
-import androidx.compose.foundation.shape.CircleShape
-import com.example.firstprac.data.RepositoryDto
-import com.example.firstprac.presentation.MainViewModel
+import com.example.firstprac.data.GithubRepository
+import com.example.firstprac.data.local.AppDatabase
+import com.example.firstprac.data.local.SettingsManager
+import com.example.firstprac.presentation.*
 import com.example.firstprac.presentation.RepoState
-import androidx.compose.ui.text.style.TextAlign
+import com.example.firstprac.data.RepositoryDto
 
 // Пункты меню
 sealed class Screen(val route: String, val title: String, val icon: ImageVector) {
     object Home : Screen("home", "Home", Icons.Default.Home)
     object Repositories : Screen("repo_list", "Repos", Icons.Default.List)
+    object Favorites : Screen("favorites", "Favs", Icons.Default.Favorite)
     object Info : Screen("info", "About", Icons.Default.Info)
+    object Settings : Screen("settings", "Settings", Icons.Default.Settings)
 }
 
 class MainActivity : ComponentActivity() {
 
-    // ViewModel
-    private val viewModel: MainViewModel by viewModels()
-
+    @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        val settingsManager = SettingsManager(applicationContext)
+        val repository = GithubRepository()
+        val database = AppDatabase.getDatabase(applicationContext)
+        val favoriteDao = database.favoriteDao()
+
+        val factory = MainViewModelFactory(settingsManager, repository, favoriteDao)
+        val viewModel = ViewModelProvider(this, factory)[MainViewModel::class.java]
+
         setContent {
             MaterialTheme {
                 val navController = rememberNavController()
 
                 Scaffold(
+                    topBar = {
+                        // Получаем текущий маршрут
+                        val navBackStackEntry by navController.currentBackStackEntryAsState()
+                        val currentRoute = navBackStackEntry?.destination?.route
+
+                        TopAppBar(
+                            title = { Text("GitHub Viewer") },
+                            actions = {
+                                if (currentRoute == Screen.Repositories.route) {
+                                    Box(modifier = Modifier.padding(end = 8.dp)) {
+                                        IconButton(onClick = { navController.navigate(Screen.Settings.route) }) {
+                                            Icon(Icons.Default.Settings, contentDescription = "Settings")
+                                        }
+
+                                        // Желтый бейдж
+                                        if (viewModel.currentSettings.minStars > 0 || viewModel.currentSettings.language.isNotEmpty()) {
+                                            Surface(
+                                                shape = CircleShape,
+                                                color = Color.Yellow,
+                                                modifier = Modifier
+                                                    .size(10.dp)
+                                                    .align(Alignment.TopEnd)
+                                                    .offset(x = (-4).dp, y = 4.dp)
+                                            ) {}
+                                        }
+                                    }
+                                }
+                            }
+                        )
+                    },
                     bottomBar = {
                         NavigationBar {
                             val navBackStackEntry by navController.currentBackStackEntryAsState()
                             val currentDestination = navBackStackEntry?.destination
-                            val items = listOf(Screen.Home, Screen.Repositories, Screen.Info)
+                            val items = listOf(Screen.Home, Screen.Repositories, Screen.Favorites, Screen.Info)
 
                             items.forEach { screen ->
                                 NavigationBarItem(
@@ -86,52 +122,63 @@ class MainActivity : ComponentActivity() {
                         modifier = Modifier.padding(innerPadding)
                     ) {
                         composable(Screen.Home.route) {
-                            Column(Modifier.fillMaxSize().padding(16.dp)) {
+                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                 Text("Welcome to GitHub Viewer", style = MaterialTheme.typography.headlineMedium)
                             }
                         }
 
-                        // Экран списка, для примера ставим username = google
                         composable(Screen.Repositories.route) {
-                            // Запускаем загрузку, если данных еще нет
-                            LaunchedEffect(Unit) {
-                                if (viewModel.uiState is RepoState.Idle) {
-                                    viewModel.fetchRepos("google")
-                                }
-                            }
-
                             when (val state = viewModel.uiState) {
-                                is RepoState.Loading -> {
-                                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                        CircularProgressIndicator()
-                                    }
-                                }
+                                is RepoState.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
                                 is RepoState.Success -> {
                                     RepositoryListScreen(
                                         items = state.repos,
-                                        onItemClick = { id -> navController.navigate("details/$id") }
+                                        onItemClick = { id -> navController.navigate("details/$id") },
+                                        onLongClick = { repo -> viewModel.toggleFavorite(repo) }
                                     )
                                 }
-                                is RepoState.Error -> {
-                                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                        Text(state.message, color = Color.Red, textAlign = TextAlign.Center)
-                                    }
-                                }
+                                is RepoState.Error -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text(state.message, color = Color.Red) }
                                 else -> {}
                             }
                         }
 
-                        composable(Screen.Info.route) {
-                            Text("Student - Anton\nPractice: Network", Modifier.padding(16.dp))
+                        composable(Screen.Favorites.route) {
+                            val favorites by viewModel.favoritesFlow.collectAsState(initial = emptyList())
+                            val favDtos = favorites.map { RepositoryDto(it.id, it.name, it.description, it.stars, it.language) }
+
+                            if (favDtos.isEmpty()) {
+                                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                    Text("No favorites yet. Long press a repo to add.")
+                                }
+                            } else {
+                                RepositoryListScreen(
+                                    items = favDtos,
+                                    onItemClick = { id -> navController.navigate("details/$id") }
+                                )
+                            }
                         }
 
-                        // Экран деталей
+                        composable(Screen.Settings.route) {
+                            SettingsScreen(
+                                currentSettings = viewModel.currentSettings,
+                                onSave = { viewModel.saveNewSettings(it) },
+                                onBack = { navController.popBackStack() }
+                            )
+                        }
+
+                        composable(Screen.Info.route) {
+                            Column(Modifier.padding(16.dp)) {
+                                Text("Student: Anton", style = MaterialTheme.typography.titleLarge)
+                                Text("Practice: Local Storage")
+                            }
+                        }
+
                         composable(
                             route = "details/{repoId}",
                             arguments = listOf(navArgument("repoId") { type = NavType.LongType })
                         ) { backStackEntry ->
                             val id = backStackEntry.arguments?.getLong("repoId")
-                            // Поиск репозитория с состоянием success
+                            // Ищем либо в основном списке, либо в избранном
                             val repo = (viewModel.uiState as? RepoState.Success)?.repos?.find { it.id == id }
                             repo?.let { RepositoryDetailsScreen(it) }
                         }
@@ -142,25 +189,38 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun RepositoryListScreen(items: List<RepositoryDto>, onItemClick: (Long) -> Unit) {
+fun RepositoryListScreen(
+    items: List<RepositoryDto>,
+    onItemClick: (Long) -> Unit,
+    onLongClick: (RepositoryDto) -> Unit = {}
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     LazyColumn {
         items(items) { repo ->
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(8.dp)
-                    .clickable { onItemClick(repo.id) }
+                    .combinedClickable(
+                        onClick = { onItemClick(repo.id) },
+                        onLongClick = {
+                            onLongClick(repo)
+                            android.widget.Toast.makeText(context, "Added to favorites!", android.widget.Toast.LENGTH_SHORT).show()
+                        }
+                    )
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(text = repo.name, style = MaterialTheme.typography.titleLarge)
-                    Text(text = "⭐ ${repo.stargazers_count}", color = MaterialTheme.colorScheme.primary)
-                    Text(text = repo.language ?: "Unknown language", style = MaterialTheme.typography.bodyMedium)
+                    Text(text = "⭐ ${repo.stargazersCount}", color = MaterialTheme.colorScheme.primary)
+                    Text(text = repo.language ?: "Unknown", style = MaterialTheme.typography.bodyMedium)
                 }
             }
         }
     }
 }
+
 
 @Composable
 fun RepositoryDetailsScreen(repo: RepositoryDto) {
@@ -209,7 +269,7 @@ fun RepositoryDetailsScreen(repo: RepositoryDto) {
                 .constrainAs(stats) { top.linkTo(divider.bottom) },
             horizontalArrangement = Arrangement.SpaceAround
         ) {
-            InfoBlock("Stars", "⭐ ${repo.stargazers_count}")
+            InfoBlock("Stars", "⭐ ${repo.stargazersCount}")
         }
 
         Text(

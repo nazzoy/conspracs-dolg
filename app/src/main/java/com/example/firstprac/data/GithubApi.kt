@@ -1,5 +1,6 @@
 package com.example.firstprac.data
 
+import com.google.gson.annotations.SerializedName
 import retrofit2.http.GET
 import retrofit2.http.Path
 
@@ -18,6 +19,7 @@ data class RepositoryDto(
     val id: Long,
     val name: String,
     val description: String?,
-    val stargazers_count: Int,
+    @SerializedName("stargazers_count") // Связка для Retrofit
+    val stargazersCount: Int,         // Имя для нашего кода
     val language: String?
 )
