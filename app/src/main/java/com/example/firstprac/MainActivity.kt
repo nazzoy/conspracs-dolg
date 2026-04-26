@@ -3,6 +3,7 @@ package com.example.firstprac
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.viewModels
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -13,9 +14,13 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -26,14 +31,14 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import androidx.constraintlayout.compose.ConstraintLayout
-import androidx.compose.foundation.background
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.foundation.shape.CircleShape
+import com.example.firstprac.data.RepositoryDto
+import com.example.firstprac.presentation.MainViewModel
+import com.example.firstprac.presentation.RepoState
 import androidx.compose.ui.text.style.TextAlign
 
-// Пункты нижнего меню
+// Пункты меню
 sealed class Screen(val route: String, val title: String, val icon: ImageVector) {
     object Home : Screen("home", "Home", Icons.Default.Home)
     object Repositories : Screen("repo_list", "Repos", Icons.Default.List)
@@ -41,6 +46,10 @@ sealed class Screen(val route: String, val title: String, val icon: ImageVector)
 }
 
 class MainActivity : ComponentActivity() {
+
+    // ViewModel
+    private val viewModel: MainViewModel by viewModels()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
@@ -71,7 +80,6 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 ) { innerPadding ->
-                    // Навигационный хост, который переключает содержимое
                     NavHost(
                         navController = navController,
                         startDestination = Screen.Home.route,
@@ -83,24 +91,48 @@ class MainActivity : ComponentActivity() {
                             }
                         }
 
+                        // Экран списка, для примера ставим username = google
                         composable(Screen.Repositories.route) {
-                            RepositoryListScreen(
-                                items = mockRepositories,
-                                onItemClick = { id -> navController.navigate("details/$id") }
-                            )
+                            // Запускаем загрузку, если данных еще нет
+                            LaunchedEffect(Unit) {
+                                if (viewModel.uiState is RepoState.Idle) {
+                                    viewModel.fetchRepos("google")
+                                }
+                            }
+
+                            when (val state = viewModel.uiState) {
+                                is RepoState.Loading -> {
+                                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                        CircularProgressIndicator()
+                                    }
+                                }
+                                is RepoState.Success -> {
+                                    RepositoryListScreen(
+                                        items = state.repos,
+                                        onItemClick = { id -> navController.navigate("details/$id") }
+                                    )
+                                }
+                                is RepoState.Error -> {
+                                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                        Text(state.message, color = Color.Red, textAlign = TextAlign.Center)
+                                    }
+                                }
+                                else -> {}
+                            }
                         }
 
                         composable(Screen.Info.route) {
-                            Text("Student - Anton\nPractice: #3", Modifier.padding(16.dp))
+                            Text("Student - Anton\nPractice: Network", Modifier.padding(16.dp))
                         }
 
                         // Экран деталей
                         composable(
                             route = "details/{repoId}",
-                            arguments = listOf(navArgument("repoId") { type = NavType.IntType })
+                            arguments = listOf(navArgument("repoId") { type = NavType.LongType })
                         ) { backStackEntry ->
-                            val id = backStackEntry.arguments?.getInt("repoId")
-                            val repo = mockRepositories.find { it.id == id }
+                            val id = backStackEntry.arguments?.getLong("repoId")
+                            // Поиск репозитория с состоянием success
+                            val repo = (viewModel.uiState as? RepoState.Success)?.repos?.find { it.id == id }
                             repo?.let { RepositoryDetailsScreen(it) }
                         }
                     }
@@ -111,8 +143,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun RepositoryListScreen(items: List<Repository>, onItemClick: (Int) -> Unit) {
-    // Используем LazyColumn для списка
+fun RepositoryListScreen(items: List<RepositoryDto>, onItemClick: (Long) -> Unit) {
     LazyColumn {
         items(items) { repo ->
             Card(
@@ -123,8 +154,8 @@ fun RepositoryListScreen(items: List<Repository>, onItemClick: (Int) -> Unit) {
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(text = repo.name, style = MaterialTheme.typography.titleLarge)
-                    Text(text = "Owner: ${repo.owner}", style = MaterialTheme.typography.bodyMedium)
-                    Text(text = "⭐ ${repo.stars}", color = MaterialTheme.colorScheme.primary)
+                    Text(text = "⭐ ${repo.stargazers_count}", color = MaterialTheme.colorScheme.primary)
+                    Text(text = repo.language ?: "Unknown language", style = MaterialTheme.typography.bodyMedium)
                 }
             }
         }
@@ -132,26 +163,24 @@ fun RepositoryListScreen(items: List<Repository>, onItemClick: (Int) -> Unit) {
 }
 
 @Composable
-fun RepositoryDetailsScreen(repo: Repository) {
+fun RepositoryDetailsScreen(repo: RepositoryDto) {
     ConstraintLayout(
         modifier = Modifier
             .fillMaxSize()
             .padding(20.dp)
     ) {
-        val (header, badge, divider, stats, description, footer) = createRefs()
+        val (header, badge, divider, stats, description) = createRefs()
 
-        // Заголовок и автор
         Column(
             modifier = Modifier.constrainAs(header) {
                 top.linkTo(parent.top)
                 start.linkTo(parent.start)
             }
         ) {
-            Text(text = repo.owner, style = MaterialTheme.typography.titleMedium, color = Color.Gray)
+            Text(text = "GitHub Repository", style = MaterialTheme.typography.titleMedium, color = Color.Gray)
             Text(text = repo.name, style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
         }
 
-        // Язык программирования
         Surface(
             color = MaterialTheme.colorScheme.primaryContainer,
             modifier = Modifier
@@ -162,36 +191,30 @@ fun RepositoryDetailsScreen(repo: Repository) {
                 }
         ) {
             Text(
-                text = repo.language,
+                text = repo.language ?: "N/A",
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                 style = MaterialTheme.typography.labelLarge
             )
         }
 
-        // 3. Линия-разделитель
         HorizontalDivider(
             modifier = Modifier
                 .padding(vertical = 16.dp)
                 .constrainAs(divider) { top.linkTo(header.bottom) }
         )
 
-        // Сетка статистики (Stars, Forks, Issues)
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .constrainAs(stats) { top.linkTo(divider.bottom) },
-            horizontalArrangement = Arrangement.SpaceBetween
+            horizontalArrangement = Arrangement.SpaceAround
         ) {
-            InfoBlock("Stars", "⭐ ${repo.stars}")
-            InfoBlock("Forks", "🍴 ${repo.forks}")
-            InfoBlock("Issues", "❗ ${repo.openIssues}")
+            InfoBlock("Stars", "⭐ ${repo.stargazers_count}")
         }
 
-        // Описание
         Text(
-            text = repo.description,
+            text = repo.description ?: "No description provided for this repository.",
             style = MaterialTheme.typography.bodyLarge,
-            lineHeight = androidx.compose.ui.unit.TextUnit.Unspecified,
             modifier = Modifier.constrainAs(description) {
                 top.linkTo(stats.bottom, margin = 24.dp)
                 start.linkTo(parent.start)
@@ -199,17 +222,6 @@ fun RepositoryDetailsScreen(repo: Repository) {
                 width = androidx.constraintlayout.compose.Dimension.fillToConstraints
             }
         )
-
-        // Подвал с датой обновления и размером
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .constrainAs(footer) { bottom.linkTo(parent.bottom) },
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text(text = "Size: ${repo.size}", style = MaterialTheme.typography.bodySmall)
-            Text(text = "Updated: ${repo.lastUpdate}", style = MaterialTheme.typography.bodySmall)
-        }
     }
 }
 
