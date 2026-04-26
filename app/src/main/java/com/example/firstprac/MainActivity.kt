@@ -42,6 +42,8 @@ sealed class Screen(val route: String, val title: String, val icon: ImageVector)
     object Favorites : Screen("favorites", "Favs", Icons.Default.Favorite)
     object Info : Screen("info", "About", Icons.Default.Info)
     object Settings : Screen("settings", "Settings", Icons.Default.Settings)
+    object Profile : Screen("profile", "Profile", Icons.Default.Person)
+    object EditProfile : Screen("edit_profile", "Edit", Icons.Default.Edit)
 }
 
 class MainActivity : ComponentActivity() {
@@ -97,7 +99,7 @@ class MainActivity : ComponentActivity() {
                         NavigationBar {
                             val navBackStackEntry by navController.currentBackStackEntryAsState()
                             val currentDestination = navBackStackEntry?.destination
-                            val items = listOf(Screen.Home, Screen.Repositories, Screen.Favorites, Screen.Info)
+                            val items = listOf(Screen.Home, Screen.Repositories, Screen.Favorites, Screen.Profile, Screen.Info)
 
                             items.forEach { screen ->
                                 NavigationBarItem(
@@ -163,6 +165,20 @@ class MainActivity : ComponentActivity() {
                                 currentSettings = viewModel.currentSettings,
                                 onSave = { viewModel.saveNewSettings(it) },
                                 onBack = { navController.popBackStack() }
+                            )
+                        }
+
+                        composable(Screen.Profile.route) {
+                            ProfileScreen(
+                                viewModel = viewModel,
+                                onEditClick = { navController.navigate(Screen.EditProfile.route) }
+                            )
+                        }
+
+                        composable(Screen.EditProfile.route) {
+                            EditProfileScreen(
+                                viewModel = viewModel,
+                                onDone = { navController.popBackStack() }
                             )
                         }
 
