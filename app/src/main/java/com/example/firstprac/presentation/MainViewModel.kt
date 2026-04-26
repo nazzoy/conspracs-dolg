@@ -13,6 +13,10 @@ import com.example.firstprac.data.local.UserSettings
 import com.example.firstprac.data.local.FavoriteDao
 import com.example.firstprac.data.local.FavoriteEntity
 import com.example.firstprac.data.RepositoryDto
+import com.example.firstprac.data.local.UserProfile
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.stateIn
 
 sealed class RepoState {
     object Idle : RepoState()
@@ -24,6 +28,7 @@ class MainViewModel(
     private val settingsManager: SettingsManager,
     private val repository: GithubRepository,
     private val favoriteDao: FavoriteDao
+
 ) : ViewModel() {
 
     var uiState by mutableStateOf<RepoState>(RepoState.Idle)
@@ -82,6 +87,18 @@ class MainViewModel(
     fun saveNewSettings(settings: UserSettings) {
         viewModelScope.launch {
             settingsManager.saveSettings(settings)
+        }
+    }
+    val userProfile: StateFlow<UserProfile> = settingsManager.profileFlow
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000), // Оптимизация ресурсов
+            initialValue = UserProfile()
+        )
+
+    fun saveProfile(name: String, avatar: String, resume: String) {
+        viewModelScope.launch {
+            settingsManager.saveProfile(UserProfile(name, avatar, resume))
         }
     }
 }
