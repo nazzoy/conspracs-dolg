@@ -57,7 +57,7 @@ class MainViewModel(
 
                 uiState = RepoState.Success(filteredRepos)
             } catch (e: Exception) {
-                uiState = RepoState.Error("Ошибка сети или профиль не найден")
+                uiState = RepoState.Error("Network error or a profile not found")
             }
         }
     }
