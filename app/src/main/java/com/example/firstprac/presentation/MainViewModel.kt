@@ -6,36 +6,82 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.firstprac.data.GithubRepository
-import com.example.firstprac.data.RepositoryDto
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import com.example.firstprac.data.local.SettingsManager
+import com.example.firstprac.data.local.UserSettings
+import com.example.firstprac.data.local.FavoriteDao
+import com.example.firstprac.data.local.FavoriteEntity
+import com.example.firstprac.data.RepositoryDto
 
-// Состояния экрана
 sealed class RepoState {
-    object Idle : RepoState() // Ничего не происходит
-    object Loading : RepoState() // Загрузки
-    data class Success(val repos: List<RepositoryDto>) : RepoState() // Данные пришли
-    data class Error(val message: String) : RepoState() // Ошибка
+    object Idle : RepoState()
+    object Loading : RepoState()
+    data class Success(val repos: List<RepositoryDto>) : RepoState()
+    data class Error(val message: String) : RepoState()
 }
+class MainViewModel(
+    private val settingsManager: SettingsManager,
+    private val repository: GithubRepository,
+    private val favoriteDao: FavoriteDao
+) : ViewModel() {
 
-class MainViewModel : ViewModel() {
-    private val repository = GithubRepository()
-
-    // Состояние которое видит пользователь
     var uiState by mutableStateOf<RepoState>(RepoState.Idle)
         private set
 
+    var currentSettings by mutableStateOf(UserSettings("google", 0, ""))
+        private set
+
+    init {
+        viewModelScope.launch {
+            settingsManager.settingsFlow.collect { settings ->
+                currentSettings = settings
+                fetchRepos(settings.username)
+            }
+        }
+    }
+
     fun fetchRepos(username: String) {
-        // Запускаем работу в фоновом потоке
         viewModelScope.launch(Dispatchers.IO) {
             uiState = RepoState.Loading
             try {
-                val repos = repository.getRepositories(username)
-                uiState = RepoState.Success(repos)
+                val allRepos = repository.getRepositories(username)
+
+                // Фильтрация на основе сохраненных настроек
+                val filteredRepos = allRepos.filter { repo ->
+                    val matchStars = repo.stargazersCount >= currentSettings.minStars
+                    val matchLang = if (currentSettings.language.isBlank()) true
+                    else repo.language?.contains(currentSettings.language, ignoreCase = true) == true
+                    matchStars && matchLang
+                }
+
+                uiState = RepoState.Success(filteredRepos)
             } catch (e: Exception) {
-                // Если нет интернета или юзер не найден — фиксируем ошибку
-                uiState = RepoState.Error("Error: ${e.localizedMessage}")
+                uiState = RepoState.Error("Network error or a profile not found")
             }
+        }
+    }
+
+    // Сохранение в избранное (Room)
+    fun toggleFavorite(repo: RepositoryDto) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val entity = FavoriteEntity(
+                id = repo.id,
+                name = repo.name,
+                description = repo.description,
+                stars = repo.stargazersCount,
+                language = repo.language
+            )
+            favoriteDao.insertFavorite(entity)
+        }
+    }
+
+    // Получение списка избранного для отдельного экрана
+    val favoritesFlow = favoriteDao.getAllFavorites()
+
+    fun saveNewSettings(settings: UserSettings) {
+        viewModelScope.launch {
+            settingsManager.saveSettings(settings)
         }
     }
 }
