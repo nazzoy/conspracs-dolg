@@ -19,7 +19,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.constraintlayout.compose.ConstraintLayout
 import androidx.lifecycle.ViewModelProvider
@@ -32,7 +31,6 @@ import com.example.firstprac.data.GithubRepository
 import com.example.firstprac.data.local.AppDatabase
 import com.example.firstprac.data.local.SettingsManager
 import com.example.firstprac.presentation.*
-import com.example.firstprac.presentation.RepoState
 import com.example.firstprac.data.RepositoryDto
 
 // Пункты меню
@@ -44,6 +42,7 @@ sealed class Screen(val route: String, val title: String, val icon: ImageVector)
     object Settings : Screen("settings", "Settings", Icons.Default.Settings)
     object Profile : Screen("profile", "Profile", Icons.Default.Person)
     object EditProfile : Screen("edit_profile", "Edit", Icons.Default.Edit)
+    object Videos : Screen("videos", "Reels", Icons.Default.PlayArrow)
 }
 
 class MainActivity : ComponentActivity() {
@@ -66,40 +65,47 @@ class MainActivity : ComponentActivity() {
 
                 Scaffold(
                     topBar = {
-                        // Получаем текущий маршрут
                         val navBackStackEntry by navController.currentBackStackEntryAsState()
                         val currentRoute = navBackStackEntry?.destination?.route
 
-                        TopAppBar(
-                            title = { Text("GitHub Viewer") },
-                            actions = {
-                                if (currentRoute == Screen.Repositories.route) {
-                                    Box(modifier = Modifier.padding(end = 8.dp)) {
-                                        IconButton(onClick = { navController.navigate(Screen.Settings.route) }) {
-                                            Icon(Icons.Default.Settings, contentDescription = "Settings")
-                                        }
+                        // Скрываем TopAppBar на экране видео
+                        if (currentRoute != Screen.Videos.route) {
+                            TopAppBar(
+                                title = { Text("GitHub Viewer") },
+                                actions = {
+                                    if (currentRoute == Screen.Repositories.route) {
+                                        Box(modifier = Modifier.padding(end = 8.dp)) {
+                                            IconButton(onClick = { navController.navigate(Screen.Settings.route) }) {
+                                                Icon(Icons.Default.Settings, contentDescription = "Settings")
+                                            }
 
-                                        // Желтый бейдж
-                                        if (viewModel.currentSettings.minStars > 0 || viewModel.currentSettings.language.isNotEmpty()) {
-                                            Surface(
-                                                shape = CircleShape,
-                                                color = Color.Yellow,
-                                                modifier = Modifier
-                                                    .size(10.dp)
-                                                    .align(Alignment.TopEnd)
-                                                    .offset(x = (-4).dp, y = 4.dp)
-                                            ) {}
+                                            if (viewModel.currentSettings.minStars > 0 || viewModel.currentSettings.language.isNotEmpty()) {
+                                                Surface(
+                                                    shape = CircleShape,
+                                                    color = Color.Yellow,
+                                                    modifier = Modifier
+                                                        .size(10.dp)
+                                                        .align(Alignment.TopEnd)
+                                                        .offset(x = (-4).dp, y = 4.dp)
+                                                ) {}
+                                            }
                                         }
                                     }
                                 }
-                            }
-                        )
+                            )
+                        }
                     },
                     bottomBar = {
                         NavigationBar {
                             val navBackStackEntry by navController.currentBackStackEntryAsState()
                             val currentDestination = navBackStackEntry?.destination
-                            val items = listOf(Screen.Home, Screen.Repositories, Screen.Favorites, Screen.Profile, Screen.Info)
+                            val items = listOf(
+                                Screen.Home,
+                                Screen.Repositories,
+                                Screen.Videos,
+                                Screen.Favorites,
+                                Screen.Profile
+                            )
 
                             items.forEach { screen ->
                                 NavigationBarItem(
@@ -120,7 +126,7 @@ class MainActivity : ComponentActivity() {
                 ) { innerPadding ->
                     NavHost(
                         navController = navController,
-                        startDestination = Screen.Home.route,
+                        startDestination = Screen.Videos.route,
                         modifier = Modifier.padding(innerPadding)
                     ) {
                         composable(Screen.Home.route) {
@@ -142,6 +148,10 @@ class MainActivity : ComponentActivity() {
                                 is RepoState.Error -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text(state.message, color = Color.Red) }
                                 else -> {}
                             }
+                        }
+
+                        composable(Screen.Videos.route) {
+                            VerticalVideoScreen()
                         }
 
                         composable(Screen.Favorites.route) {
@@ -182,19 +192,11 @@ class MainActivity : ComponentActivity() {
                             )
                         }
 
-                        composable(Screen.Info.route) {
-                            Column(Modifier.padding(16.dp)) {
-                                Text("Student: Anton", style = MaterialTheme.typography.titleLarge)
-                                Text("Practice: Local Storage")
-                            }
-                        }
-
                         composable(
                             route = "details/{repoId}",
                             arguments = listOf(navArgument("repoId") { type = NavType.LongType })
                         ) { backStackEntry ->
                             val id = backStackEntry.arguments?.getLong("repoId")
-                            // Ищем либо в основном списке, либо в избранном
                             val repo = (viewModel.uiState as? RepoState.Success)?.repos?.find { it.id == id }
                             repo?.let { RepositoryDetailsScreen(it) }
                         }
