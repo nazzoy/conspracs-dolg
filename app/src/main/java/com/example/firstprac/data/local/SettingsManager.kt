@@ -17,9 +17,11 @@ class SettingsManager(private val context: Context) {
     private val KEY_USERNAME = stringPreferencesKey("pref_username")
     private val KEY_MIN_STARS = intPreferencesKey("pref_min_stars")
     private val KEY_LANGUAGE = stringPreferencesKey("pref_language")
+    
     private val NAME_KEY = stringPreferencesKey("user_name")
     private val AVATAR_KEY = stringPreferencesKey("avatar_uri")
     private val RESUME_KEY = stringPreferencesKey("resume_url")
+    private val TIME_KEY = stringPreferencesKey("class_time")
 
     // Получаем настройки
     val settingsFlow: Flow<UserSettings> = context.dataStore.data.map { pref ->
@@ -44,7 +46,8 @@ class SettingsManager(private val context: Context) {
         UserProfile(
             name = prefs[NAME_KEY] ?: "",
             avatarUri = prefs[AVATAR_KEY] ?: "",
-            resumeUrl = prefs[RESUME_KEY] ?: ""
+            resumeUrl = prefs[RESUME_KEY] ?: "",
+            classTime = prefs[TIME_KEY] ?: ""
         )
     }
 
@@ -54,6 +57,7 @@ class SettingsManager(private val context: Context) {
             prefs[NAME_KEY] = profile.name
             prefs[AVATAR_KEY] = profile.avatarUri
             prefs[RESUME_KEY] = profile.resumeUrl
+            prefs[TIME_KEY] = profile.classTime
         }
     }
 }
@@ -64,4 +68,3 @@ data class UserSettings(
     val minStars: Int,
     val language: String
 )
-

@@ -15,7 +15,7 @@ object NetworkModule {
             .build()
     }
 
-    // Экземпляр нашего интерфейса
+    // Экземпляр интерфейса
     val githubApi: GithubApi by lazy {
         retrofit.create(GithubApi::class.java)
     }
