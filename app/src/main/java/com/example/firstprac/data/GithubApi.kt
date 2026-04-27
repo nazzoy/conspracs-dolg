@@ -19,7 +19,7 @@ data class RepositoryDto(
     val id: Long,
     val name: String,
     val description: String?,
-    @SerializedName("stargazers_count") // Связка для Retrofit
-    val stargazersCount: Int,         // Имя для нашего кода
+    @SerializedName("stargazers_count")
+    val stargazersCount: Int,
     val language: String?
 )

@@ -4,5 +4,5 @@ data class UserProfile(
     val name: String = "",
     val avatarUri: String = "",
     val resumeUrl: String = "",
-    val jobTitle: String = ""
+    val classTime: String = ""
 )

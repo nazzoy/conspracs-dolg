@@ -1,10 +1,16 @@
 package com.example.firstprac.presentation
 
+import android.app.AlarmManager
+import android.app.PendingIntent
+import android.content.Context
+import android.content.Intent
+import android.os.Build
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.firstprac.data.AlarmReceiver
 import com.example.firstprac.data.GithubRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -17,6 +23,7 @@ import com.example.firstprac.data.local.UserProfile
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
+import java.util.Calendar
 
 sealed class RepoState {
     object Idle : RepoState()
@@ -92,13 +99,71 @@ class MainViewModel(
     val userProfile: StateFlow<UserProfile> = settingsManager.profileFlow
         .stateIn(
             scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000), // Оптимизация ресурсов
+            started = SharingStarted.WhileSubscribed(5000),
             initialValue = UserProfile()
         )
 
-    fun saveProfile(name: String, avatar: String, resume: String) {
+    fun saveProfile(name: String, avatar: String, resume: String, time: String) {
         viewModelScope.launch {
-            settingsManager.saveProfile(UserProfile(name, avatar, resume))
+            settingsManager.saveProfile(UserProfile(name, avatar, resume, time))
+        }
+    }
+
+    fun scheduleNotification(context: Context, time: String, userName: String) {
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            if (!alarmManager.canScheduleExactAlarms()) {
+                setInexactAlarm(context, alarmManager, time, userName)
+                return
+            }
+        }
+
+        val intent = Intent(context, AlarmReceiver::class.java).apply {
+            putExtra("USER_NAME", userName)
+        }
+
+        val pendingIntent = PendingIntent.getBroadcast(
+            context, 0, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val calendar = getCalendarFromTime(time)
+
+        alarmManager.setExactAndAllowWhileIdle(
+            AlarmManager.RTC_WAKEUP,
+            calendar.timeInMillis,
+            pendingIntent
+        )
+    }
+
+    private fun setInexactAlarm(context: Context, alarmManager: AlarmManager, time: String, userName: String) {
+        val intent = Intent(context, AlarmReceiver::class.java).apply {
+            putExtra("USER_NAME", userName)
+        }
+        val pendingIntent = PendingIntent.getBroadcast(
+            context, 0, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val calendar = getCalendarFromTime(time)
+
+        alarmManager.set(
+            AlarmManager.RTC_WAKEUP,
+            calendar.timeInMillis,
+            pendingIntent
+        )
+    }
+
+    private fun getCalendarFromTime(time: String): Calendar {
+        val (hour, minute) = time.split(":").map { it.toInt() }
+        return Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, hour)
+            set(Calendar.MINUTE, minute)
+            set(Calendar.SECOND, 0)
+
+            if (timeInMillis <= System.currentTimeMillis()) {
+                add(Calendar.DAY_OF_YEAR, 1)
+            }
         }
     }
 }
